@@ -116,7 +116,7 @@ cor(women$Number,H) # same!
 
 #### The answer that best explains the differences in admission percentages when we combine majors is C) There is a confounding between gender and preference for "hard" majors: females are more likely to apply to harder majors. This is because, when we computed the correlation between the number of applications across majors and H, for women we got a negative correlation, meaning that a decrease in application of majors is associated with an increase in applications of H. This is an inverse relationship and it is contrasted with the correlation calculated for men (which was positive). Hence, the correct answer is that there is a confounding between gender and preference, which essentially means that women are more likely to apply to harder majors than men.
 
-#Batch Effects Exercise 3:
+##Batch Effects Exercise 3:
 ```{r}
 #For the dataset we have been working with, models do not help due to the almost perfect confounding. This is one reason we created the subset dataset:
 library(GSE5859Subset)

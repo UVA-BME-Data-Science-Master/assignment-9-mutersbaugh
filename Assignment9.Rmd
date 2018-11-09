@@ -115,6 +115,147 @@ cor(women$Number,H) # same!
 #### D) The sample size for the individual majors was not large enough to draw the correct conclusion.
 
 #### The answer that best explains the differences in admission percentages when we combine majors is C) There is a confounding between gender and preference for "hard" majors: females are more likely to apply to harder majors. This is because, when we computed the correlation between the number of applications across majors and H, for women we got a negative correlation, meaning that a decrease in application of majors is associated with an increase in applications of H. This is an inverse relationship and it is contrasted with the correlation calculated for men (which was positive). Hence, the correct answer is that there is a confounding between gender and preference, which essentially means that women are more likely to apply to harder majors than men.
+
+#Batch Effects Exercise 3:
+```{r}
+#For the dataset we have been working with, models do not help due to the almost perfect confounding. This is one reason we created the subset dataset:
+library(GSE5859Subset)
+data(GSE5859Subset)
+
+#Here we purposely confounded month and group (sex), but not completely:
+sex = sampleInfo$group
+month = factor( format(sampleInfo$date,"%m"))
+table( sampleInfo$group, month)
+```
+
+###1: Using the functions rowttests and qvalue compare the two groups. Because this is a smaller dataset which decreases our power, we will use the more lenient FDR cut-off of 10%. How many gene have q-values less than 0.1?
+```{r}
+library(qvalue)
+library(genefilter)
+sex = factor( sex)
+pval = rowttests(geneExpression, sex)$p.value
+qval = qvalue(pval)
+sum(qval$qvalue < 0.1)
+```
+
+#### From the computation above, we can see that the number of genes with q-values less than 0.1 is 59. 
+  
+###2: Note that sampleInfo$group here presents males andf emales. Thus, we expect differences to be in on chrY and, for genes that escape inactivation, chrX. We do not expect many autosomal genes to be different between males and females. This gives us an opportunity to evaluate false and true positives with experimental data. For example, we evaluate results using the proportion genes of the list that are on chrX or chrY. For the list calculated above, what proportion of this list is on chrX or chrY?
+```{r}
+library(qvalue)
+library(genefilter)
+sex = factor( sex)
+pval = rowttests(geneExpression, sex)$p.value
+qval = qvalue(pval)
+qvals = qval$qvalues
+index = geneAnnotation$CHR[qvals<0.1]%in%c("chrX","chrY")
+mean(index)
+```
+  
+#### From the list of genes with q-value less than 0.1, calculated in #1, the proportion of this list on chrX or chrY is 0.3389831. 
+  
+###3: We can also check how many of the chromosomes X and Y genes we detected as different. How many are on Y?
+```{r}
+Y = which(geneAnnotation$CHR[index] == "chrY")
+Y
+chrY = sum(geneAnnotation$CHR[index] == "chrY", na.rm = TRUE)
+chrY
+```
+
+#### There are 6 genes located on chromosome Y. 
+  
+###4: Now for the autosomal genes (not on chrX and chrY) for which q-value < 0.1, perform a t-test comparing samples processed in June to those processed in October. What proportion of these have p-values < 0.05 ?
+```{r}
+library(qvalue)
+library(genefilter)
+sex = factor( sex)
+pval = rowttests(geneExpression, sex)$p.value
+qval = qvalue(pval)
+qvals = qval$qvalues
+index = which(qvals<0.1 & !geneAnnotation$CHR%in%c("chrX","chrY"))
+month = factor( format(sampleInfo$date,"%m"))
+pval = rowttests(geneExpression[index,], month)$p.value
+mean(pval<0.05)
+```
+
+#### As per the computation above, the proportion of these autosomal genes that have p-values les than 0.05 is 0.8717949. 
+  
+###5: The above result shows that the great majority of the autosomal genes show differences due to processing data. This provides further evidence that confounding is resulting in false positives. So we are going to try to model the month effect to better estimate the sex effect. We are going to use a linear model. Which of the following creates the appropriate design matrix? 
+#### A) X = model.matrix(???sex+ethnicity)
+#### B) X = cbind(sex,as.numeric(month))
+#### C) It can't be done with one line.
+#### D) X = model.matrix(???sex+month)
+
+#### Answer: D) X = model.matrix(~sex+month)
+
+###6: Now use the X defined above, to fit a regression model using lm for each gene. You can obtain p-values for estimated parameters using summary. Here is an example
+```{r}
+X = model.matrix(~sex+month)
+i = 234
+y = geneExpression[i,]
+fit = lm(y~X)
+summary(fit)$coef
+```
+
+### How many of the q-values for the group comparison are now <0.1? Note the big drop from what we obtained without the correction.
+```{r}
+X = model.matrix(~sex+month)
+pvals <- t( sapply(1:nrow(geneExpression),function(j){
+  y <- geneExpression[j,]
+  fit <- lm(y~X-1)
+  summary(fit)$coef[2,4] # the 2 picks out the second (sex) coef, the 4 picks out the p value
+} ) )
+
+library(qvalue)
+library(genefilter)
+qval = qvalue(pvals)
+qvals = qval$qvalues
+sum(qvals<0.1)
+```
+
+#### There are 17 q-values for the group comparison that are now < 0.1. It is interesting to note that this code is done faster with "limma" and "lmFit". In the code above the design matrix does not change within the iterations we are computing $(X'X)^{-1}$ over and over and applying it to each gene. Instead we can perform this calculation in one matrix algebra calculation by computing it once and then obtaining all the betas by multiplying $(X^\top X)^{-1}X'Y$ with the columns of $Y$ representing genes in this case. The `limma` package has an implementation of this idea (using the QR decomposition). Note how much faster this is:
+  
+###7: With this new list, what proportion of these are chrX and chrY? Notice the big improvement.
+```{r}
+index1 = geneAnnotation$CHR[qvals<0.1]%in%c("chrX","chrY")
+mean(index1)
+```
+
+#### The proportion of these that are chrX and chrY is 0.8823529. 
+  
+###8: How many on Y or X?
+```{r}
+X1 = which(geneAnnotation$CHR[index1] == "chrX")
+X1
+chrX1 = sum(geneAnnotation$CHR[index1] == "chrX", na.rm = TRUE)
+chrX1
+
+Y1 = which(geneAnnotation$CHR[index1] == "chrY")
+Y1
+chrY1 = sum(geneAnnotation$CHR[index1] == "chrY", na.rm = TRUE)
+chrY1
+```
+
+#### From the code above, we can see that there are 343 genes on chromosome X and 17 genes on chromosome Y. 
+  
+###9: Now from the linear model above, extract the p-values related to the coefficient representing the October versus June differences using the same linear model. How many of the q-values for the month comparison are now <0.1? This approach is basically the approach implemented by Combat.
+```{r}
+X = model.matrix(~sex+month)
+
+pvals <- t( sapply(1:nrow(geneExpression),function(j){
+  y <- geneExpression[j,]
+  fit <- lm(y~X-1)
+  summary(fit)$coef[3,4] # third coef, for month
+} ) )
+
+library(qvalue)
+library(genefilter)
+qval = qvalue(pvals)
+qvals = qval$qvalues
+sum(qvals<0.1)
+```
+
+#### There are 3170 q-values for the month comparison are now less than 0.1. 
   
 ##Batch Effects Exercise 2:
 
